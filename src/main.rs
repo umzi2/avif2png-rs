@@ -4,6 +4,7 @@ use std::env;
 use indicatif::{ProgressBar, ProgressStyle};
 use avif_decode::*;
 use rgb::ComponentMap;
+use std::sync::{Arc, Mutex};
 use rayon::prelude::*;
 
 fn avif_to_png(input_path: &Path, output_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
@@ -49,57 +50,97 @@ fn avif_to_png(input_path: &Path, output_path: &Path) -> Result<(), Box<dyn std:
     Ok(())
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args: Vec<String> = env::args().collect();
-    let input_directory;
-    let output_directory;
 
-    if args.len() != 5 {
-        input_directory = "INPUT";
-        output_directory = "OUTPUT2";
-    } else {
-        input_directory = &args[2];
-        output_directory = &args[4];
-    }
-
-    if !fs::metadata(output_directory).is_ok() {
-        fs::create_dir(output_directory)?;
-        println!("Папка успешно создана: {}", output_directory);
-    } else {
-        println!("Папка уже существует: {}", output_directory);
-    }
+fn process_directory(input_directory: &Path, output_directory: &Path, recursive: bool) -> Vec<(PathBuf, PathBuf)> {
+    let mut files_to_process = Vec::new();
 
     if let Ok(paths) = read_dir(input_directory) {
-        let paths = paths.collect::<Vec<_>>();
-        let total_files = paths.len() as u64;
+        for path in paths.flatten() {
+            let path2 = path.path();
 
-        let progress_bar = ProgressBar::new(total_files);
-        progress_bar.set_style(
-            ProgressStyle::default_bar()
-                .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} ({eta})")?
-                .progress_chars("##-"),
-        );
+            if path2.is_file() && path2.extension().is_some() {
+                let file_stem = path2.file_stem().expect("Failed to get file stem").to_string_lossy();
+                let mut output_path = PathBuf::from(output_directory);
+                output_path.push(file_stem.to_string());
+                output_path.set_extension("png");
 
-        paths.par_iter().for_each(|path| {
-            if let Ok(entry) = path {
-                let path2 = entry.path();
-                if path2.is_file() && path2.extension().is_some() {
-                    let file_stem = path2.file_stem().expect("Failed to get file stem").to_string_lossy();
-                    let mut output_path = PathBuf::from(output_directory);
-                    output_path.push(file_stem.to_string());
-                    output_path.set_extension("png");
+                files_to_process.push((path2.clone(), output_path));
+            } else if recursive && path2.is_dir() {
+                let relative_path = path2.strip_prefix(input_directory).expect("Failed to get relative path");
+                let new_output_directory = output_directory.join(relative_path);
 
-                    if let Err(e) = avif_to_png(&path2, &output_path) {
-                        eprintln!("Ошибка при обработке файла {}: {}", path2.display(), e);
-                    }
+                // Проверяем, существует ли каталог в выходной директории, и создаем его, если нет
+                if !new_output_directory.exists() {
+                    fs::create_dir_all(&new_output_directory).expect("Failed to create output directory");
+                }
 
-                    progress_bar.inc(1);
+                let subdirectory_files = process_directory(&path2, &new_output_directory, recursive);
+                files_to_process.extend(subdirectory_files);
+            }
+        }
+    }
+
+    files_to_process
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut args = env::args().skip(1); // First argument is program name
+    let mut input_directory = String::from("INPUT");
+    let mut output_directory = String::from("OUTPUT");
+    let mut recursive = true;
+
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "-i" | "--input" => {
+                if let Some(dir) = args.next() {
+                    input_directory = dir.clone();
+                } else {
+                    eprintln!("Missing value for input directory");
+                    return Ok(());
                 }
             }
-        });
-
-        progress_bar.finish();
+            "-o" | "--output" => {
+                if let Some(dir) = args.next() {
+                    output_directory = dir.clone();
+                } else {
+                    eprintln!("Missing value for output directory");
+                    return Ok(());
+                }
+            }
+            "--recursive" => recursive = true,
+            _ => {
+                eprintln!("Unknown argument: {}", arg);
+                return Ok(());
+            }
+        }
     }
+
+    let input_directory: &str = input_directory.as_str();
+    let output_directory: &str = output_directory.as_str();
+    if !fs::metadata(output_directory).is_ok() {
+        fs::create_dir(output_directory)?;
+
+    }
+
+    let files_to_process = process_directory(Path::new(input_directory), Path::new(output_directory), recursive);
+    let total_files = files_to_process.len() as u64;
+
+    let progress_bar = Arc::new(Mutex::new(ProgressBar::new(total_files)));
+    progress_bar.lock().unwrap().set_style(
+        ProgressStyle::default_bar()
+            .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} ({eta})")?
+            .progress_chars("##-"),
+    );
+
+    files_to_process.par_iter().for_each(|(input_path, output_path)| {
+        if let Err(e) = avif_to_png(&input_path, &output_path) {
+            eprintln!("Ошибка при обработке файла {}: {}", input_path.display(), e);
+        }
+
+        progress_bar.lock().unwrap().inc(1);
+    });
+
+    progress_bar.lock().unwrap().finish();
 
     Ok(())
 }
