@@ -11,6 +11,6 @@ chmod +x avif2png-rs
 ```
 windows:
 ```
-avif2png.exe -i <путь> -o <путь>
+avif2png-rs.exe -i <путь> -o <путь>
 ```
 За основу был взять репозиторий kornelski: [avif-decode](https://github.com/kornelski/avif-decode)
