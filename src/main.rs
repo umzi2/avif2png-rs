@@ -87,7 +87,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = env::args().skip(1); // First argument is program name
     let mut input_directory = String::from("INPUT");
     let mut output_directory = String::from("OUTPUT");
-    let mut recursive = true;
+    let mut recursive = false;
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
