@@ -70,6 +70,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "avif2png-rs"
+version = "0.1.0"
+dependencies = [
+ "avif-decode",
+ "image",
+ "indicatif",
+ "lodepng",
+ "rayon",
+ "rgb",
+]
+
+[[package]]
 name = "bit_field"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -620,18 +632,6 @@ name = "unicode-width"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e51733f11c9c4f72aa0c160008246859e340b00807569a0da0e7a1079b27ba85"
-
-[[package]]
-name = "untitled2"
-version = "0.1.0"
-dependencies = [
- "avif-decode",
- "image",
- "indicatif",
- "lodepng",
- "rayon",
- "rgb",
-]
 
 [[package]]
 name = "version_check"
